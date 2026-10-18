@@ -67,7 +67,7 @@ func TestChatCompletionCountsRealOutboundModelRequests(t *testing.T) {
 	assert.Equal(t, 120, *attempt.PromptTokens)
 	require.NotNil(t, attempt.CachedPromptTokens)
 	assert.Zero(t, *attempt.CachedPromptTokens)
-	assert.Equal(t, len(centralAgentToolNames(true, false)), attempt.ToolCount)
+	assert.Equal(t, len(eng.toolWindowForRound(ChatOptions{})), attempt.ToolCount)
 	assert.Positive(t, attempt.ToolWindowRunes)
 	assert.Regexp(t, `^sha256:[0-9a-f]{64}$`, attempt.ToolWindowHash)
 

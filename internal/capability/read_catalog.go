@@ -35,6 +35,7 @@ func ReadToolName(id intent.Intent) string { return ReadToolPrefix + string(id) 
 
 func ReadDefinitions() []ReadDefinition {
 	definitions := []ReadDefinition{
+		readDefinition(intent.Intent(WebSearchLabel), NewReadCapability(webSearchReadSpec())),
 		readDefinition(intent.IntentResourceInfo, NewReadCapability(resourceReadSpec())),
 		readDefinition(intent.IntentMonitorQuery, NewReadCapability(monitorCurrentReadSpec())),
 		readDefinition(intent.IntentMonitorHistory, NewReadCapability(monitorHistoryReadSpec())),

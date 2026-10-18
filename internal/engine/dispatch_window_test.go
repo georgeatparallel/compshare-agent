@@ -148,14 +148,16 @@ func TestCentralAgentStaticPromptAndToolWindowStayWithinBudget(t *testing.T) {
 		require.NotContains(t, system, "更新任务状态",
 			"the retired semantic-memory tool must not remain as a model instruction")
 		// The tool window is measured on the production shape, which includes
-		// the SSH diagnosis tool; its max is 36982 bytes. Every model-visible
+		// the SSH diagnosis tool; its max is 37860 bytes, including the separate
+		// public technical web-search schema. Its caller/consumption probe uses a scripted model,
+		// not a live-model routing measurement. Every model-visible
 		// parameter states its own fill and omission rule, and identity fields
 		// carry values the target tool accepts (both are pinned by their own
 		// tests here); recover bytes by neither deleting that guidance nor
 		// merging tools without production selection data.
-		require.LessOrEqual(t, len(toolJSON), 37100, "model-visible tool window grew past its reviewed byte budget")
-		// Measured max is 42324 (production shape).
-		require.LessOrEqual(t, len(system)+len(toolJSON), 42400,
+		require.LessOrEqual(t, len(toolJSON), 37950, "model-visible tool window grew past its reviewed byte budget")
+		// Measured max is 43202 (production shape).
+		require.LessOrEqual(t, len(system)+len(toolJSON), 43300,
 			"static prompt plus tool schemas grew past its reviewed byte budget")
 	}
 }

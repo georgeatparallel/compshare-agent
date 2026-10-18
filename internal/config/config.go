@@ -37,6 +37,7 @@ type STSConfig struct {
 }
 
 type AgentConfig struct {
+	WebSearch WebSearchConfig `yaml:"web_search"`
 	LLM       LLMConfig       `yaml:"llm"`
 	RateLimit RateLimitConfig `yaml:"rate_limit"`
 
@@ -59,6 +60,13 @@ type AgentConfig struct {
 	Retrieval     RetrievalConfig     `yaml:"retrieval"`
 	Trace         TraceConfig         `yaml:"trace"`
 	SSHOps        SSHOpsConfig        `yaml:"ssh_ops"`
+}
+
+// WebSearchConfig controls public technical queries sent to Parallel Search MCP.
+// Disabled is an explicit deployment egress choice; it does not affect the KB.
+type WebSearchConfig struct {
+	Disabled  bool `yaml:"disabled"`
+	TimeoutMS int  `yaml:"timeout_ms"`
 }
 
 // FeishuConfig connects a Feishu application bot to the Agent's WebSocket

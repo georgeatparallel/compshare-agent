@@ -231,6 +231,7 @@ Only genuine operational or authorization choices remain configurable:
 | `agent.authorization.mutating_tools` | authorize confirmation-gated product writes |
 | `agent.llm.fallbacks` | models tried in order, each optionally on its own endpoint/key, when a request fails upstream |
 | `agent.retrieval.mcp_*` | remote knowledge MCP endpoint/token/timeout |
+| `agent.web_search.*` | disable public technical web queries or set their timeout |
 | `agent.trace.*` | completed-turn trace sink and retention inputs |
 | `agent.ssh_ops.*` | optional in-instance lane, permissions and network routing |
 | `agent.ocr.*` | screenshot interpretation |

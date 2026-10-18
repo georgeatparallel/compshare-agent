@@ -203,6 +203,7 @@ func TestSessionIsolation_RateLimit(t *testing.T) {
 // bookkeeping; adding one to Engine still has to be justified below.
 func TestSessionIsolation_AllEngineFieldsClassified(t *testing.T) {
 	sharedFields := map[string]bool{
+		"webSearch":          true, // immutable client shared across sessions; no conversation state
 		"llmClient":          true,
 		"knowledgeRetriever": true,
 		"rateLimiter":        true,
@@ -216,6 +217,7 @@ func TestSessionIsolation_AllEngineFieldsClassified(t *testing.T) {
 		"zoneCatalog": true,
 	}
 	perSessionFields := map[string]bool{
+		"webSearchSessionID":               true, // opaque correlation ID; never shared across sessions
 		"safeExecutor":                     true,
 		"confirmFn":                        true,
 		"confirmEditsFn":                   true,
@@ -287,10 +289,10 @@ func TestSessionIsolation_AllEngineFieldsClassified(t *testing.T) {
 
 	// The fixed counts make an unclassified Engine field fail even when it is
 	// accidentally omitted from both maps.
-	if want, got := 6, len(sharedFields); want != got {
+	if want, got := 7, len(sharedFields); want != got {
 		t.Fatalf("shared whitelist count drift: expected %d, got %d", want, got)
 	}
-	if want, got := 28, len(perSessionFields); want != got {
+	if want, got := 29, len(perSessionFields); want != got {
 		t.Fatalf("per-session whitelist count drift: expected %d, got %d", want, got)
 	}
 

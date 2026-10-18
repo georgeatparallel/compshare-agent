@@ -76,10 +76,12 @@ func (e *Engine) executeTypedReadCapability(ctx context.Context, action, capabil
 	now := time.Now()
 	snapshot := e.RegistrySnapshot()
 	rt := capability.ReadRuntime{
-		Executor:     capabilityHandlerExecutor{engine: e, onStep: onStep},
-		Resolver:     snapshot,
-		Now:          now,
-		SyncRegistry: e.syncRegistryFromDescribe,
+		WebSearch:          e.webSearch,
+		WebSearchSessionID: e.webSearchSessionID,
+		Executor:           capabilityHandlerExecutor{engine: e, onStep: onStep},
+		Resolver:           snapshot,
+		Now:                now,
+		SyncRegistry:       e.syncRegistryFromDescribe,
 	}
 	if reg.RequiresZoneCatalog(request) {
 		rt.ZoneCatalog = e.zoneCatalogSnapshot(ctx)

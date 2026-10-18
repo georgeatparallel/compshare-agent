@@ -19,6 +19,25 @@ go build -o compshare-agent ./cmd
 ./compshare-agent server -c /path/to/config.yaml
 ```
 
+## 公开技术资料检索
+
+控制台助手可通过 [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp)
+搜索当前的 GPU、AI 部署和 Linux 技术资料，并获取来源链接与节选。公开网页检索默认可用，
+使用匿名 Fast 模式，不需要 Parallel 账号或 API key；免费服务有使用额度。仅发送公开技术问题，
+不要将账号信息、实例 ID、密码或私有日志放入检索内容。
+
+部署可在 YAML 中关闭公开网页检索或调整单次请求超时（默认 20000 毫秒）：
+
+```yaml
+agent:
+  web_search:
+    disabled: true
+    timeout_ms: 20000
+```
+
+`SearchKnowledge` 和 `ReadChunk` 仍只访问配置的 CompShare 知识库。
+网页结果是外部参考，不证明平台规则、账号或实例状态；知识问答专用模式和外部群的工具权限保持各自的限制。
+
 ## 部署
 
 生产交付物是一个自包含 Docker 镜像，内含 Go 服务、`config.local.yaml` 与 `config.prod.yaml`、Python 3.13、Claude Agent SDK、

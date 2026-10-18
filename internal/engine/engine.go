@@ -24,8 +24,10 @@ import (
 	"github.com/compshare-agent/internal/prompt"
 	"github.com/compshare-agent/internal/refusal"
 	"github.com/compshare-agent/internal/tools"
+	"github.com/compshare-agent/internal/websearch"
 	"github.com/compshare-agent/internal/workflow"
 	"github.com/compshare-agent/internal/zones"
+	"github.com/google/uuid"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -178,8 +180,10 @@ type ChatOptions struct {
 
 // Engine runs the ReAct loop: User → LLM → Tool → LLM → ... → Reply.
 type Engine struct {
-	llmClient    LLMClient
-	safeExecutor *tools.SafeToolExecutor
+	webSearch          capability.WebSearcher
+	webSearchSessionID string
+	llmClient          LLMClient
+	safeExecutor       *tools.SafeToolExecutor
 	// externalExecutor is the RAW (unfiltered) shared executor. Used only for
 	// read-only L0 catalog calls that must pass gateway-identity args the
 	// SafeToolExecutor would strip (e.g. DescribeCompShareSupportZone needs
@@ -266,6 +270,7 @@ type Engine struct {
 // KnowledgeRetriever is exported so server bootstrap
 // can assign it on immutable process-wide dependencies before sessions start.
 type SharedDeps struct {
+	WebSearch          capability.WebSearcher
 	LLMClient          LLMClient
 	KnowledgeRetriever KnowledgeRetriever
 	RateLimiter        governance.RateLimiter
@@ -298,7 +303,12 @@ func NewSharedDeps(cfg *config.Config) (*SharedDeps, error) {
 	if strings.TrimSpace(cfg.Agent.LLM.Model) == "" {
 		return nil, errors.New("engine.NewSharedDeps: agent.llm.model is required")
 	}
+	var search capability.WebSearcher
+	if !cfg.Agent.WebSearch.Disabled {
+		search = websearch.NewClient(nil, time.Duration(cfg.Agent.WebSearch.TimeoutMS)*time.Millisecond)
+	}
 	return &SharedDeps{
+		WebSearch: search,
 		LLMClient: llm.NewClient(cfg.Agent.LLM),
 		// InMemoryRateLimiter is process-local and suitable for local demo or
 		// single-instance deployment only. Multi-replica production needs a
@@ -323,6 +333,8 @@ func NewSession(deps *SharedDeps, opts SessionOptions) *Engine {
 		panic("engine.NewSession: deps is nil")
 	}
 	eng := &Engine{
+		webSearch:          deps.WebSearch,
+		webSearchSessionID: uuid.NewString(),
 		// ── shared (pointer-equal across sessions) ──
 		llmClient:          deps.LLMClient,
 		knowledgeRetriever: deps.KnowledgeRetriever,
@@ -346,6 +358,7 @@ func NewSession(deps *SharedDeps, opts SessionOptions) *Engine {
 // NewWithDeps creates an Engine with injected dependencies (for testing).
 func NewWithDeps(client LLMClient, executor tools.ToolExecutor, confirmFn ConfirmFunc) *Engine {
 	eng := &Engine{
+		webSearchSessionID:   uuid.NewString(),
 		llmClient:            client,
 		confirmFn:            confirmFn,
 		registry:             entity.NewRegistry(),

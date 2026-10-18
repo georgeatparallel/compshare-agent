@@ -46,8 +46,10 @@ type EntityResolver interface {
 // of these is a model parameter: the handler never receives UserText, QueryText
 // or an intent route, and never re-parses natural language.
 type ReadRuntime struct {
-	Executor ReadExecutor
-	Resolver EntityResolver
+	WebSearch          WebSearcher
+	WebSearchSessionID string
+	Executor           ReadExecutor
+	Resolver           EntityResolver
 	// ZoneCatalog is the one immutable support-zone snapshot for this turn. The
 	// engine supplies the same object to this read capability, CodecZone and the
 	// workflow, so a free-form answer and a later write cannot observe different

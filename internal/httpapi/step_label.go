@@ -61,6 +61,7 @@ var stepActionLabels = map[string]string{
 	"ReadCapability_monitor_history":            "查询历史监控",
 	"ReadCapability_gpu_specs_query":            "查询 GPU 规格",
 	"ReadCapability_stock_availability":         "查询资源库存",
+	"ReadCapability_web_search":                 "搜索公开技术资料",
 	"ReadCapability_image_list":                 "查询镜像列表",
 	"ReadCapability_image_tag_catalog":          "查询镜像标签",
 	"ReadCapability_zone_catalog":               "查询可用区",

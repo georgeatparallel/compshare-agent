@@ -130,6 +130,30 @@ agent:
 	assert.Equal(t, "2001:db8::1", cfg.Agent.MySQL.HostOverride)
 }
 
+func TestLoad_WebSearchChoicePreservesKnowledgeConfiguration(t *testing.T) {
+	setRequiredSecretEnv(t)
+	for _, disabled := range []bool{false, true} {
+		choice := "false"
+		if disabled {
+			choice = "true"
+		}
+		cfg, err := Load(writeConfig(t, baseConfig(`
+  web_search:
+    disabled: `+choice+`
+    timeout_ms: 3210
+  retrieval:
+    mcp_url: "https://private-kb.example/mcp"
+    mcp_bearer_token: "configured-kb-token"
+`)))
+		require.NoError(t, err)
+		require.Equal(t, disabled, cfg.Agent.WebSearch.Disabled)
+		require.Equal(t, 3210, cfg.Agent.WebSearch.TimeoutMS)
+		getenv := cfg.RuntimeGetenv(func(string) string { return "ambient" })
+		require.Equal(t, "https://private-kb.example/mcp", getenv("COMPSHARE_KB_MCP_URL"))
+		require.Equal(t, "configured-kb-token", getenv("COMPSHARE_KB_MCP_BEARER_TOKEN"))
+	}
+}
+
 func setRequiredSecretEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("COMPSHARE_PUBLIC_KEY", "public-from-env")

@@ -123,8 +123,12 @@ observability signals, not the source of truth for write safety.
 ### MCP Client
 
 MCP is a transport protocol, not another Agent layer. This service is an MCP
-client only for the configured CompShare knowledge endpoint. It does not expose a
-general MCP tool server or dynamically import arbitrary remote tools.
+client for the configured CompShare knowledge endpoint and the fixed Parallel
+Search MCP endpoint. The typed `ReadCapability_web_search` read capability
+returns public technical references through the same central Agent loop. It is
+independent of `SearchKnowledge`: web results do not establish CompShare rules,
+account facts or Guest state. It does not expose a general MCP tool server or
+dynamically import arbitrary remote tools.
 
 ## Runtime Shape
 
