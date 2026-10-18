@@ -31,7 +31,7 @@ func (e *Engine) toolWindowForRound(opts ChatOptions) []openai.Tool {
 	} else if opts.PublicPlatformReadOnly {
 		toolWindow = centralAgentPublicPlatformReadOnlyToolWindow()
 	}
-	if e.webSearch == nil || e.agentToolCallsThisTurn(capability.WebSearchTool) >= 4 {
+	if e.webSearch == nil || e.agentToolCallsThisTurn(capability.WebSearchTool) >= maxWebSearchCallsPerTurn {
 		toolWindow = toolListWithoutFunction(toolWindow, capability.WebSearchTool)
 	}
 	if e.agentToolCallsThisTurn("SearchKnowledge") >= maxSearchKnowledgeCallsPerTurn &&

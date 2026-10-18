@@ -124,6 +124,7 @@ func loadRecentHistory(ctx context.Context, messages store.MessageStore, session
 // NOT called (HTTP path skips the welcome/suggestion pre-warm — see design §6.3).
 func (p *Pool) buildEngine(ctx context.Context, owner store.Owner, sessionID string) (*engine.Engine, error) {
 	eng := engine.NewSession(p.deps, engine.SessionOptions{
+		ConversationKey:      fmt.Sprintf("%d:%d:%s", owner.TopOrganizationID, owner.OrganizationID, sessionID),
 		Subject:              governance.AnonymousSubjectKey,
 		ConfirmFn:            denyConfirm,
 		MutatingToolsEnabled: p.mutatingToolsEnabled,

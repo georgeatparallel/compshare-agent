@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,6 +41,7 @@ const (
 	// Each SearchKnowledge call makes one retrieval. At the call cap the
 	// tool is withdrawn so a corpus gap cannot become an unbounded re-query loop.
 	maxSearchKnowledgeCallsPerTurn = 4
+	maxWebSearchCallsPerTurn       = 4
 )
 
 const mutatingToolsDisabledMessage = "当前阶段不直接执行开机、关机、重启、重置密码、创建实例等变更操作。我可以告诉你在控制台怎么操作，具体执行请到控制台完成。"
@@ -287,6 +289,9 @@ type SharedDeps struct {
 
 // SessionOptions configures one server-side session Engine.
 type SessionOptions struct {
+	// ConversationKey is server-owned owner/session identity. Only its opaque
+	// namespaced digest is sent to the public search service across cold rebuilds.
+	ConversationKey      string
 	Subject              string
 	ConfirmFn            ConfirmFunc
 	MutatingToolsEnabled bool
@@ -332,9 +337,14 @@ func NewSession(deps *SharedDeps, opts SessionOptions) *Engine {
 	if deps == nil {
 		panic("engine.NewSession: deps is nil")
 	}
+	searchSessionID := uuid.NewString()
+	if opts.ConversationKey != "" {
+		digest := sha256.Sum256([]byte("compshare-agent:parallel:" + opts.ConversationKey))
+		searchSessionID = fmt.Sprintf("%x", digest)
+	}
 	eng := &Engine{
 		webSearch:          deps.WebSearch,
-		webSearchSessionID: uuid.NewString(),
+		webSearchSessionID: searchSessionID,
 		// ── shared (pointer-equal across sessions) ──
 		llmClient:          deps.LLMClient,
 		knowledgeRetriever: deps.KnowledgeRetriever,

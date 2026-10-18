@@ -29,6 +29,9 @@ func repeatableAgentTool(action string) bool {
 // arguments changed. Two attempts leave room for one genuine correction without
 // allowing a monitor turn to consume the whole ReAct budget.
 func maxAgentToolCallsPerTurn(action string) int {
+	if action == capability.WebSearchTool {
+		return maxWebSearchCallsPerTurn
+	}
 	if action == "DiagnoseInstanceInternals" {
 		return MaxInstanceOpsRunsPerTurn
 	}

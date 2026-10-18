@@ -66,14 +66,19 @@ func (t *parallelTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return t.base.RoundTrip(clone)
 }
 
-func installParallelFixture(t *testing.T, run func(context.Context, parallelSearchInput) (*mcp.CallToolResult, websearch.Result, error)) *parallelTransport {
+func installParallelFixture(t *testing.T, run func(context.Context, parallelSearchInput) (*mcp.CallToolResult, websearch.Result, error), onDelete ...func(context.Context)) *parallelTransport {
 	t.Helper()
 	server := mcp.NewServer(&mcp.Implementation{Name: "parallel-fixture", Version: "1"}, nil)
 	mcp.AddTool(server, &mcp.Tool{Name: "web_search"}, func(ctx context.Context, _ *mcp.CallToolRequest, in parallelSearchInput) (*mcp.CallToolResult, websearch.Result, error) {
 		return run(ctx, in)
 	})
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
-	srv := httptest.NewServer(handler)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete && len(onDelete) > 0 {
+			onDelete[0](r.Context())
+		}
+		handler.ServeHTTP(w, r)
+	}))
 	t.Cleanup(srv.Close)
 	u, err := url.Parse(srv.URL)
 	require.NoError(t, err)
@@ -224,6 +229,56 @@ func TestWebSearchCancellation(t *testing.T) {
 	}
 }
 
+func TestWebSearchCleanupHonorsLifetime(t *testing.T) {
+	for _, mode := range []string{"deadline", "stricter_client", "cancellation"} {
+		t.Run(mode, func(t *testing.T) {
+			cleanupStarted := make(chan struct{})
+			installParallelFixture(t, func(context.Context, parallelSearchInput) (*mcp.CallToolResult, websearch.Result, error) {
+				return nil, websearch.Result{Results: []websearch.Page{{URL: "https://docs.nvidia.com/"}}}, nil
+			}, func(ctx context.Context) {
+				close(cleanupStarted)
+				select {
+				case <-ctx.Done():
+				case <-time.After(300 * time.Millisecond):
+				}
+			})
+			timeout := 70 * time.Millisecond
+			httpClient := &http.Client{}
+			if mode == "stricter_client" {
+				timeout = time.Second
+				httpClient.Timeout = 70 * time.Millisecond
+			}
+			if mode == "cancellation" {
+				timeout = time.Second
+			}
+			client := websearch.NewClient(httpClient, timeout)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan struct{})
+			started := time.Now()
+			go func() {
+				_, _ = client.Search(ctx, "fixture-session", "CUDA docs", []string{"CUDA compatibility documentation"})
+				close(done)
+			}()
+			select {
+			case <-cleanupStarted:
+			case <-time.After(time.Second):
+				t.Fatal("successful search did not reach cleanup")
+			}
+			if mode == "cancellation" {
+				started = time.Now()
+				cancel()
+			}
+			select {
+			case <-done:
+			case <-time.After(200 * time.Millisecond):
+				t.Fatal("cleanup exceeded the search lifetime")
+			}
+			require.Less(t, time.Since(started), 200*time.Millisecond)
+		})
+	}
+}
+
 func TestWebSearchDoesNotReplaceFailedKnowledgeSearch(t *testing.T) {
 	transport := installParallelFixture(t, func(context.Context, parallelSearchInput) (*mcp.CallToolResult, websearch.Result, error) {
 		t.Error("knowledge failure silently invoked web search")
@@ -250,17 +305,25 @@ func TestWebSearchInvalidArgumentsAndBoundedResults(t *testing.T) {
 		}
 		return nil, websearch.Result{Results: pages}, nil
 	})
-	eng := newWebSearchEngine(t, config.WebSearchConfig{}, &mockLLM{})
 	for _, args := range []string{
+		`{}`,
+		`{"objective":"CUDA docs"}`,
+		`{"search_queries":["CUDA docs"]}`,
+		`{"objective":"","search_queries":["CUDA docs"]}`,
+		`{"objective":"CUDA docs","search_queries":[]}`,
+		`{"objective":"CUDA docs","search_queries":null}`,
 		`{"objective":" ","search_queries":["CUDA docs"]}`,
 		`{"objective":"CUDA docs","search_queries":[" "]}`,
 		`{"objective":"CUDA docs","search_queries":["a","b","c","d"]}`,
 		`{"objective":"CUDA docs","search_queries":12}`,
 	} {
+		eng := newWebSearchEngine(t, config.WebSearchConfig{}, &mockLLM{})
 		out := execToolInTurn(eng, toolCall("invalid", capability.WebSearchTool, args), noopStep)
 		require.Contains(t, out.Observation, "INVALID_TOOL_ARGUMENTS")
+		require.Contains(t, out.Observation, "correct_tool_call")
 	}
 	require.Zero(t, calls)
+	eng := newWebSearchEngine(t, config.WebSearchConfig{}, &mockLLM{})
 	result, err := eng.webSearch.Search(context.Background(), eng.webSearchSessionID, "CUDA docs", []string{"CUDA compatibility documentation"})
 	require.NoError(t, err)
 	require.True(t, result.Truncated)
@@ -269,23 +332,39 @@ func TestWebSearchInvalidArgumentsAndBoundedResults(t *testing.T) {
 }
 
 func TestWebSearchTurnBudget(t *testing.T) {
+	for _, mode := range []string{"sequential", "one_batch", "three_then_two"} {
+		t.Run(mode, func(t *testing.T) { testWebSearchTurnBudget(t, mode) })
+	}
+}
+
+func testWebSearchTurnBudget(t *testing.T, mode string) {
 	calls := 0
 	installParallelFixture(t, func(context.Context, parallelSearchInput) (*mcp.CallToolResult, websearch.Result, error) {
 		calls++
 		return nil, websearch.Result{Results: []websearch.Page{{URL: "https://docs.nvidia.com/", Excerpts: []string{"Public technical reference."}}}}, nil
 	})
 	model := &mockLLM{}
+	var batch []openai.ToolCall
 	for i := 0; i < 5; i++ {
 		args := fmt.Sprintf(`{"objective":"CUDA reference %d","search_queries":["CUDA compatibility documentation"]}`, i)
-		model.responses = append(model.responses, llm.ChatResponse{ToolCalls: []openai.ToolCall{toolCall(fmt.Sprintf("web-%d", i), capability.WebSearchTool, args)}})
+		call := toolCall(fmt.Sprintf("web-%d", i), capability.WebSearchTool, args)
+		if mode == "sequential" || (mode == "three_then_two" && i < 3) {
+			model.responses = append(model.responses, llm.ChatResponse{ToolCalls: []openai.ToolCall{call}})
+		} else {
+			batch = append(batch, call)
+		}
+	}
+	if len(batch) > 0 {
+		model.responses = append(model.responses, llm.ChatResponse{ToolCalls: batch})
 	}
 	model.responses = append(model.responses, llm.ChatResponse{Content: "参考 NVIDIA 文档。"})
 	eng := newWebSearchEngine(t, config.WebSearchConfig{}, model)
 	_, err := eng.Chat(context.Background(), "查 CUDA 技术文档", noopStep)
 	require.NoError(t, err)
 	require.Equal(t, 4, calls)
-	require.NotContains(t, toolNames(model.calls[4].Tools), capability.WebSearchTool)
-	require.Contains(t, toolNames(model.calls[4].Tools), "SearchKnowledge")
+	last := model.calls[len(model.calls)-1]
+	require.NotContains(t, toolNames(last.Tools), capability.WebSearchTool)
+	require.Contains(t, toolNames(last.Tools), "SearchKnowledge")
 }
 
 type liveParallelTransport struct {

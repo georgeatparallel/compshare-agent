@@ -206,6 +206,10 @@ type ReadCapabilitySpec[Request platform.ReadRequest, Response any] struct {
 	// must equal Request's JSON field set (enforced by the catalog consistency
 	// test).
 	Params schemaNode
+	// Validate rejects model-owned argument errors after strict decoding, before
+	// MissingFields can turn them into a request for user input. Nil preserves
+	// the capability's ordinary missing-user-input behavior.
+	Validate func(Request) error
 	// NeedsZoneCatalog declares whether this concrete request consumes the
 	// engine-owned live availability-zone snapshot. The dependency is evaluated
 	// after strict decoding, so capabilities with an optional zone field can avoid
@@ -301,7 +305,16 @@ func NewReadCapability[Request platform.ReadRequest, Response any](spec ReadCapa
 			if err := spec.Params.validate(args, ""); err != nil {
 				return nil, err
 			}
-			return decodeStrictRead[Request](args)
+			request, err := decodeStrictRead[Request](args)
+			if err != nil {
+				return nil, err
+			}
+			if spec.Validate != nil {
+				if err := spec.Validate(request.(Request)); err != nil {
+					return nil, err
+				}
+			}
+			return request, nil
 		},
 		run: func(ctx context.Context, req platform.ReadRequest, rt ReadRuntime) ReadResult {
 			typed, ok := req.(Request)

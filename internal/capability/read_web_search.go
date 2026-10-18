@@ -39,10 +39,10 @@ func webSearchReadSpec() ReadCapabilitySpec[WebSearchRequest, websearch.Result] 
 			"objective":      stringParam().described("一个明确的公开技术检索目标，1 到 1000 字符。"),
 			"search_queries": arrayParam(stringParam()).described("1 到 3 个相关关键词查询，每个 1 到 256 字符，建议 3 到 6 个词。"),
 		}, "objective", "search_queries"),
+		Validate: func(req WebSearchRequest) error {
+			return websearch.Validate(req.Objective, req.SearchQueries)
+		},
 		Handle: func(ctx context.Context, req WebSearchRequest, rt ReadRuntime) (websearch.Result, ReadResult) {
-			if err := websearch.Validate(req.Objective, req.SearchQueries); err != nil {
-				return websearch.Result{}, ReadResult{Status: platform.ReadStatusFallbackBeforeTool, FallbackReason: platform.ReadFallbackValidation, Reply: err.Error()}
-			}
 			if rt.WebSearch == nil {
 				return websearch.Result{}, ReadUnavailable("部署未启用公开网页检索。", nil)
 			}

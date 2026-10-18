@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -50,6 +51,9 @@ func NewClient(httpClient *http.Client, timeout time.Duration) *Client {
 	if timeout <= 0 {
 		timeout = 20 * time.Second
 	}
+	if clone.Timeout <= 0 || clone.Timeout > timeout {
+		clone.Timeout = timeout
+	}
 	return &Client{httpClient: &clone, timeout: timeout}
 }
 
@@ -60,6 +64,43 @@ func (t projectTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	clone.Header = req.Header.Clone()
 	clone.Header.Set("User-Agent", UserAgent)
 	return t.base.RoundTrip(clone)
+}
+
+// The SDK detaches its session cleanup context. Bind even those HTTP requests
+// to the search lifetime so DELETE cannot outlive a deadline or cancellation.
+type searchTransport struct {
+	parent context.Context
+	base   http.RoundTripper
+}
+
+func (t searchTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	ctx, cancel := context.WithCancel(req.Context())
+	stop := context.AfterFunc(t.parent, cancel)
+	if t.parent.Err() != nil {
+		cancel()
+	}
+	cleanup := func() { stop(); cancel() }
+	response, err := t.base.RoundTrip(req.Clone(ctx))
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+	if response.Body != nil {
+		response.Body = &searchBody{ReadCloser: response.Body, cleanup: cleanup}
+	} else {
+		cleanup()
+	}
+	return response, nil
+}
+
+type searchBody struct {
+	io.ReadCloser
+	cleanup func()
+}
+
+func (b *searchBody) Close() error {
+	defer b.cleanup()
+	return b.ReadCloser.Close()
 }
 
 func Validate(objective string, queries []string) error {
@@ -86,8 +127,10 @@ func (c *Client) Search(ctx context.Context, sessionID, objective string, querie
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 	client := mcp.NewClient(&mcp.Implementation{Name: "compshare-agent", Version: "1.0.0"}, nil)
+	httpClient := *c.httpClient
+	httpClient.Transport = searchTransport{parent: ctx, base: httpClient.Transport}
 	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{
-		Endpoint: Endpoint, HTTPClient: c.httpClient, DisableStandaloneSSE: true, MaxRetries: -1,
+		Endpoint: Endpoint, HTTPClient: &httpClient, DisableStandaloneSSE: true, MaxRetries: -1,
 	}, nil)
 	if err != nil {
 		return Result{}, fmt.Errorf("connect Parallel MCP: %w", err)
